@@ -434,33 +434,53 @@ const usePpmState = () => {
     }
   }, [registeredProfiles]);
 
-  // --- Auth operations ---
-  const login = useCallback((username, password) => {
-    const input = username.toLowerCase();
-    
-    // Check default profiles
-    let user = PROFILES.find(p => {
-      const defaultEmail = `${p.username}@example.com`.toLowerCase();
-      return (p.username === input || defaultEmail === input) && p.password === password;
+  // --- Supabase Session Management ---
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setCurrentUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.user_metadata?.full_name || 'User',
+          role: 'Project Manager', // We can query roles later
+          company: session.user.user_metadata?.company || 'My Workspace'
+        });
+      }
     });
-    
-    // Check registered profiles
-    if (!user) {
-      user = registeredProfiles.find(p => 
-        (p.username.toLowerCase() === input || (p.email && p.email.toLowerCase() === input)) && 
-        p.password === password
-      );
-    }
-    
-    if (user) {
-      setCurrentUser(user);
-      return { success: true, user };
-    }
-    return { success: false, error: 'Invalid username or password' };
-  }, [registeredProfiles]);
 
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setCurrentUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.user_metadata?.full_name || 'User',
+          role: 'Project Manager',
+          company: session.user.user_metadata?.company || 'My Workspace'
+        });
+      } else {
+        setCurrentUser(null);
+      }
+    });
 
-  const logout = useCallback(() => {
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // --- Auth operations ---
+  const login = useCallback(async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true, user: data.user };
+  }, []);
+
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
   }, []);
 
@@ -474,128 +494,25 @@ const usePpmState = () => {
     }
   }, [registeredProfiles]);
 
-  const registerProfile = useCallback((profileData) => {
-    const firstInitial = (profileData.firstName || '').substring(0, 1).toUpperCase();
-    const lastInitial = (profileData.lastName || '').substring(0, 1).toUpperCase();
-    const avatar = `${firstInitial}${lastInitial}` || 'U';
-    const fullName = `${profileData.firstName} ${profileData.lastName}`;
+  const registerProfile = useCallback(async (profileData) => {
+    const fullName = `${profileData.firstName} ${profileData.lastName}`.trim();
     
-    const newProfile = {
-      id: `user-${Date.now()}`,
-      username: profileData.username.toLowerCase(),
-      name: fullName,
-      role: profileData.role, // PPM Administrator, Portfolio Manager, Project Manager, Individual User
-      avatar,
+    const { data, error } = await supabase.auth.signUp({
+      email: profileData.email,
       password: profileData.password,
-      email: profileData.email.toLowerCase(),
-      age: profileData.age,
-      company: profileData.company,
-      location: profileData.location,
-      theme: profileData.theme || 'Light',
-      industry: profileData.industry || 'Technology'
-    };
-    
-    let isDuplicate = false;
-    setRegisteredProfiles((prev) => {
-      const exists = prev.some(p => p.username === newProfile.username || p.email === newProfile.email);
-      if (exists) {
-        isDuplicate = true;
-        return prev;
+      options: {
+        data: {
+          full_name: fullName,
+          company: profileData.company || 'Personal Workspace',
+          role: profileData.role
+        }
       }
-      return [...prev, newProfile];
     });
-    
-    if (isDuplicate) {
-      return { success: false, error: 'Username or email already exists' };
+
+    if (error) {
+      return { success: false, error: error.message };
     }
-
-    // Generate a beautiful sample project for individual workspace
-    const sampleProjectId = `proj-${Date.now()}`;
-    const sampleProject = {
-      id: sampleProjectId,
-      name: 'My Standalone Workspace Launch',
-      description: 'Welcome to your individual project workspace! Here you can schedule WBS tasks, manage RAID logs, trace requirements, and set OKRs.',
-      owner: fullName,
-      company: newProfile.company,
-      visibility: 'private',
-      dueDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      status: 'healthy',
-      capexBudget: 15000,
-      opexBudget: 8000,
-      businessUnit: 'Individual Workspace',
-      category: 'Applications',
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      strategicAlignment: 9,
-      portfolioId: null,
-      programId: null,
-      tasks: [
-        {
-          id: `task-${Date.now()}-1`,
-          title: 'Draft Project Plan & Milestones',
-          description: 'Establish milestones, assign hours, and structure the WBS workplan.',
-          status: 'in-progress',
-          priority: 'high',
-          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          assigneeId: 'res-1',
-          allocatedHours: 12,
-          isMilestone: false,
-          predecessorId: null,
-          subtasks: [],
-          comments: []
-        },
-        {
-          id: `task-${Date.now()}-2`,
-          title: 'Review RAID Mitigation Strategies',
-          description: 'Identify risks, document decisions, and list dependencies in the RAID-AD log.',
-          status: 'not-started',
-          priority: 'medium',
-          dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          assigneeId: 'res-1',
-          allocatedHours: 8,
-          isMilestone: false,
-          predecessorId: null,
-          subtasks: [],
-          comments: []
-        }
-      ],
-      risks: [
-        {
-          id: `risk-${Date.now()}-1`,
-          title: 'Unfamiliar with AuraPPM',
-          likelihood: 2,
-          impact: 2,
-          status: 'open',
-          mitigation: 'Explore WBS task tracking and collaborative comments.',
-          owner: fullName
-        }
-      ],
-      capexItems: [],
-      assumptions: [],
-      issues: [],
-      dependencies: [],
-      actionItems: [
-        { id: `act-${Date.now()}-1`, title: 'Complete first task walkthrough', assigneeId: 'res-1', dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], status: 'pending' }
-      ],
-      decisions: [],
-      requirements: [
-        { id: `req-${Date.now()}-1`, title: 'Familiarization Spec', description: 'User must interact with WBS scheduling tasks.', category: 'functional', priority: 'medium', wbsTaskId: `task-${Date.now()}-1`, status: 'approved' }
-      ],
-      targets: [
-        { id: `tar-${Date.now()}-1`, title: 'Setup OKR', metric: 'Workspace configuration completed', targetValue: '100%', actualValue: '50%', type: 'okr', status: 'on-track' }
-      ],
-      discussions: [
-        { id: `com-${Date.now()}-1`, targetType: 'project', targetId: sampleProjectId, text: 'This comment board is for contextual project discussions.', author: fullName, timestamp: new Date().toISOString() }
-      ]
-    };
-
-    setState(prev => ({
-      ...prev,
-      projects: [...prev.projects, sampleProject]
-    }));
-
-    setCurrentUser(newProfile);
-    return { success: true, user: newProfile };
+    return { success: true };
   }, []);
 
   const resetPasswordByEmail = useCallback((email, newPassword) => {

@@ -14,7 +14,7 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -32,15 +32,13 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
-    setTimeout(() => {
-      const success = register(name, email, password);
-      if (success) {
-        navigate('/app');
-      } else {
-        setError('Something went wrong. Please try again.');
-      }
-      setLoading(false);
-    }, 400);
+    const result = await register(name, email, password);
+    if (result && result.success) {
+      navigate('/app');
+    } else {
+      setError(result?.error || 'Something went wrong. Please try again.');
+    }
+    setLoading(false);
   };
 
   return (

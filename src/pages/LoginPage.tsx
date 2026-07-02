@@ -13,20 +13,18 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
-      const result = login(email, password);
-      if (result && result.success) {
-        navigate('/app');
-      } else {
-        setError('Invalid username or password. Try admin / admin');
-      }
-      setLoading(false);
-    }, 400);
+    const result = await login(email, password);
+    if (result && result.success) {
+      navigate('/app');
+    } else {
+      setError(result?.error || 'Invalid email or password.');
+    }
+    setLoading(false);
   };
 
   const validEmails = [
@@ -187,26 +185,14 @@ export default function LoginPage() {
                   </div>
                 )}
 
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button 
+                  type="submit" 
+                  className="w-full bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 border-0"
+                  disabled={loading}
+                >
                   {loading ? 'Signing in...' : 'Sign In'}
                 </Button>
               </form>
-
-              <div className="mt-6">
-                <p className="text-xs text-slate-500 mb-3 text-center">Quick login with demo accounts</p>
-                <div className="flex flex-wrap gap-2">
-                  {validEmails.map((demo) => (
-                    <button
-                      key={demo.username}
-                      type="button"
-                      onClick={() => fillDemo(demo)}
-                      className="text-xs px-2 py-1 rounded-md bg-slate-800/50 border border-white/5 text-slate-400 hover:text-white hover:border-white/10 transition-colors"
-                    >
-                      {demo.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </CardContent>
           </Card>
 
