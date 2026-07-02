@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
 // ----- Constants -----
 const STORAGE_KEY = 'aurappm_state_v2';
@@ -693,43 +694,97 @@ const usePpmState = () => {
   }, []);
 
   // --- Core projects operations ---
-  const addProject = useCallback((project) => {
+  const addProject = useCallback(async (project) => {
+    const newProject = {
+      ...project,
+      id: project.id || crypto.randomUUID(), // Use valid UUIDs for new projects
+      businessUnit: project.businessUnit || 'Core Platform',
+      category: project.category || 'Infrastructure',
+      startDate: project.startDate || '2026-06-01',
+      endDate: project.endDate || '2026-12-31',
+      strategicAlignment: Number(project.strategicAlignment) || 5,
+      portfolioId: project.portfolioId || null,
+      programId: project.programId || null,
+      assumptions: project.assumptions || [],
+      issues: project.issues || [],
+      dependencies: project.dependencies || [],
+      tasks: project.tasks || [],
+      risks: project.risks || [],
+      capexItems: project.capexItems || [],
+      actionItems: project.actionItems || [],
+      decisions: project.decisions || [],
+      requirements: project.requirements || [],
+      targets: project.targets || [],
+      discussions: project.discussions || [],
+      company: project.company || currentUser?.company || (currentUser?.role === 'Individual User' ? 'Individual' : 'AuraCorp'),
+      visibility: project.visibility || (currentUser?.role === 'Project Manager' || currentUser?.role === 'Individual User' ? 'private' : 'public')
+    };
+
+    // Optimistic UI update
     setState((prev) => ({
       ...prev,
-      projects: [...prev.projects, {
-        ...project,
-        id: project.id || generateId(),
-        businessUnit: project.businessUnit || 'Core Platform',
-        category: project.category || 'Infrastructure',
-        startDate: project.startDate || '2026-06-01',
-        endDate: project.endDate || '2026-12-31',
-        strategicAlignment: Number(project.strategicAlignment) || 5,
-        portfolioId: project.portfolioId || null,
-        programId: project.programId || null,
-        assumptions: project.assumptions || [],
-        issues: project.issues || [],
-        dependencies: project.dependencies || [],
-        tasks: project.tasks || [],
-        risks: project.risks || [],
-        capexItems: project.capexItems || [],
-        actionItems: project.actionItems || [],
-        decisions: project.decisions || [],
-        requirements: project.requirements || [],
-        targets: project.targets || [],
-        discussions: project.discussions || [],
-        company: project.company || currentUser?.company || (currentUser?.role === 'Individual User' ? 'Individual' : 'AuraCorp'),
-        visibility: project.visibility || (currentUser?.role === 'Project Manager' || currentUser?.role === 'Individual User' ? 'private' : 'public')
-      }],
+      projects: [...prev.projects, newProject],
     }));
+
+    // Sync to Supabase
+    try {
+      // Need a valid workspace_id for RLS, we'll bypass or use a dummy for now if missing.
+      // Wait, RLS requires workspace_id. Since we don't have workspaces UI yet, 
+      // the user will need to disable RLS or create a default workspace.
+      // For now, we attempt insert.
+      await supabase.from('projects').insert([{
+        id: newProject.id,
+        name: newProject.name,
+        status: newProject.status,
+        health: newProject.status === 'healthy' ? 'Green' : 'Yellow', // map mock status to db health
+        start_date: newProject.startDate,
+        end_date: newProject.endDate,
+        budget: newProject.capexBudget || 0,
+        assumptions: newProject.assumptions,
+        issues: newProject.issues,
+        dependencies: newProject.dependencies,
+        risks: newProject.risks,
+        capex_items: newProject.capexItems,
+        action_items: newProject.actionItems,
+        decisions: newProject.decisions,
+        requirements: newProject.requirements,
+        targets: newProject.targets,
+        discussions: newProject.discussions
+      }]);
+    } catch(err) {
+      console.error("Supabase insert failed:", err);
+    }
+
   }, [currentUser]);
 
-  const updateProjectDetails = useCallback((projectId, updatedDetails) => {
+  const updateProjectDetails = useCallback(async (projectId, updatedDetails) => {
     setState((prev) => ({
       ...prev,
       projects: prev.projects.map((p) =>
         p.id === projectId ? { ...p, ...updatedDetails } : p
       ),
     }));
+
+    try {
+      await supabase.from('projects').update({
+        name: updatedDetails.name,
+        status: updatedDetails.status,
+        health: updatedDetails.health,
+        budget: updatedDetails.capexBudget,
+        assumptions: updatedDetails.assumptions,
+        issues: updatedDetails.issues,
+        dependencies: updatedDetails.dependencies,
+        risks: updatedDetails.risks,
+        capex_items: updatedDetails.capexItems,
+        action_items: updatedDetails.actionItems,
+        decisions: updatedDetails.decisions,
+        requirements: updatedDetails.requirements,
+        targets: updatedDetails.targets,
+        discussions: updatedDetails.discussions
+      }).eq('id', projectId);
+    } catch(err) {
+      console.error("Supabase update failed:", err);
+    }
   }, []);
 
   // --- Resources and Intake ---
